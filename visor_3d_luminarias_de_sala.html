@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visor Arquitectónico 3D - Luminarias de Sala</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #0f172a; }
+    #canvas-container { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
+    /* Personalización de scrollbar para panel lateral */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.7); }
+    input[type="range"] { accent-color: #f59e0b; }
+  </style>
+</head>
+<body class="text-slate-100 select-none">
+
+  <!-- Contenedor WebGL 3D -->
+  <div id="canvas-container"></div>
+
+  <!-- Tooltip flotante al pasar el cursor sobre luminarias -->
+  <div id="luminaire-tooltip" class="fixed z-30 pointer-events-none hidden bg-slate-900/95 backdrop-blur-md border border-amber-400/50 text-slate-100 px-3.5 py-2.5 rounded-xl shadow-2xl text-xs transition-opacity duration-150">
+    <div class="flex items-center gap-2 mb-1">
+      <span id="tooltip-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]"></span>
+      <span id="tooltip-title" class="font-semibold text-amber-300 text-sm">Dicroico LED</span>
+    </div>
+    <div id="tooltip-type" class="text-slate-300 mb-1">Empotrado en falso cielo raso</div>
+    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/80 font-mono text-[11px]">
+      <div>Eje X: <span id="tooltip-x" class="text-emerald-400 font-semibold">0.80 m</span></div>
+      <div>Eje Z: <span id="tooltip-z" class="text-emerald-400 font-semibold">1.08 m</span></div>
+    </div>
+  </div>
+
+  <!-- Barra superior compacta con título y botones de cámara -->
+  <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- Tarjeta de identificación del plano -->
+    <div class="pointer-events-auto bg-slate-900/85 backdrop-blur-md border border-slate-700/70 rounded-2xl px-4 py-2.5 shadow-xl flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold tracking-tight text-white leading-tight">LUMINARIAS DE SALA.pdf</h1>
+        <p class="text-[11px] text-slate-400">Planta 5.47 m × 6.08 m • 16 Dicroicos + 2 Colgantes</p>
+      </div>
+    </div>
+
+    <!-- Cámaras Preestablecidas -->
+    <nav class="pointer-events-auto bg-slate-900/85 backdrop-blur-md border border-slate-700/70 rounded-2xl p-1.5 shadow-xl flex flex-wrap items-center gap-1">
+      <button data-cam="general" class="cam-btn active px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-500 text-slate-950 shadow transition">Perspectiva General</button>
+      <button data-cam="planta" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition">Vista Planta (Plano)</button>
+      <button data-cam="sala" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition">Vista Sala</button>
+      <button data-cam="comedor" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition">Vista Comedor</button>
+      <button data-cam="techo" class="cam-btn px-3 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition">Vista Techo</button>
+    </nav>
+  </header>
+
+  <!-- Botón flotante para colapsar/expandir panel lateral -->
+  <button id="toggle-sidebar-btn" class="fixed bottom-4 right-4 sm:top-20 sm:bottom-auto sm:right-3 z-30 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 text-slate-100 px-3.5 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold transition">
+    <svg id="sidebar-icon" class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+    </svg>
+    <span id="sidebar-btn-text">Controles</span>
+  </button>
+
+  <!-- Panel Lateral Colapsable de Controles Arquitectónicos e Iluminación -->
+  <aside id="control-sidebar" class="fixed top-20 sm:top-32 right-3 bottom-16 sm:bottom-4 z-20 w-80 max-w-[calc(100vw-1.5rem)] bg-slate-900/90 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-transform duration-300">
+    <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+      <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Control Arquitectónico</span>
+      <span class="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md">Escala 1:1 m</span>
+    </div>
+
+    <div class="p-4 overflow-y-auto space-y-5 text-xs">
+      
+      <!-- 1. Escena Día / Noche -->
+      <div>
+        <label class="block text-slate-400 font-semibold uppercase tracking-wider text-[10px] mb-2">Ambiente Exterior</label>
+        <div class="grid grid-cols-2 gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+          <button id="btn-mode-night" class="py-2 px-3 rounded-lg font-semibold bg-indigo-600 text-white shadow flex items-center justify-center gap-1.5 transition">
+            <span>🌙</span> Modo Noche
+          </button>
+          <button id="btn-mode-day" class="py-2 px-3 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 transition">
+            <span>☀️</span> Modo Día
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. Circuitos de Iluminación -->
+      <div>
+        <label class="block text-slate-400 font-semibold uppercase tracking-wider text-[10px] mb-2">Circuitos de Luminarias</label>
+        <div class="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="flex items-center gap-2 text-slate-200 font-medium">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-300"></span>
+              16 Dicroicos (4×4)
+            </span>
+            <input type="checkbox" id="chk-dicroicos" checked class="w-4 h-4 rounded accent-amber-500 cursor-pointer">
+          </label>
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="flex items-center gap-2 text-slate-200 font-medium">
+              <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+              Colgante Sala (2.04, 2.48)
+            </span>
+            <input type="checkbox" id="chk-colgante-sala" checked class="w-4 h-4 rounded accent-amber-500 cursor-pointer">
+          </label>
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="flex items-center gap-2 text-slate-200 font-medium">
+              <span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span>
+              Colgante Comedor (2.22, 4.88)
+            </span>
+            <input type="checkbox" id="chk-colgante-comedor" checked class="w-4 h-4 rounded accent-amber-500 cursor-pointer">
+          </label>
+          <label class="flex items-center justify-between cursor-pointer pt-1 border-t border-slate-800">
+            <span class="flex items-center gap-2 text-slate-300">
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-300"></span>
+              Luz Ambiente General
+            </span>
+            <input type="checkbox" id="chk-ambient" checked class="w-4 h-4 rounded accent-amber-500 cursor-pointer">
+          </label>
+        </div>
+      </div>
+
+      <!-- 3. Temperatura de Color -->
+      <div>
+        <label class="block text-slate-400 font-semibold uppercase tracking-wider text-[10px] mb-2">Temperatura de Luz (Kelvin)</label>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button data-temp="3000" class="temp-btn active py-2 px-2 rounded-xl border border-amber-400/60 bg-amber-500/20 text-amber-200 font-semibold text-center transition">
+            <div>Cálida</div>
+            <div class="text-[10px] opacity-80">3000K</div>
+          </button>
+          <button data-temp="4000" class="temp-btn py-2 px-2 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800 text-center transition">
+            <div>Neutra</div>
+            <div class="text-[10px] opacity-80">4000K</div>
+          </button>
+          <button data-temp="6000" class="temp-btn py-2 px-2 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800 text-center transition">
+            <div>Fría</div>
+            <div class="text-[10px] opacity-80">6000K</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4. Capas Técnicas del Plano -->
+      <div>
+        <label class="block text-slate-400 font-semibold uppercase tracking-wider text-[10px] mb-2">Capas Técnicas y Arquitectura</label>
+        
+        <!-- Estado del Techo / Falso Cielo Raso -->
+        <div class="mb-3">
+          <div class="text-slate-300 mb-1.5 font-medium">Techo / Falso Cielo Raso:</div>
+          <div class="grid grid-cols-3 gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800">
+            <button data-ceiling="semi" class="ceil-btn active py-1.5 px-2 rounded-lg bg-slate-700 text-white font-semibold transition">Semi-Transp.</button>
+            <button data-ceiling="solid" class="ceil-btn py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition">Sólido</button>
+            <button data-ceiling="hidden" class="ceil-btn py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition">Oculto</button>
+          </div>
+        </div>
+
+        <!-- Líneas Guía y Cotas 3D -->
+        <label class="flex items-center justify-between bg-slate-950/50 p-3 rounded-xl border border-slate-800/80 cursor-pointer mb-3">
+          <span class="flex items-center gap-2 text-emerald-300 font-medium">
+            <span class="w-2.5 h-2.5 rounded-sm bg-emerald-400"></span>
+            Líneas Guía y Cotas 3D
+          </span>
+          <input type="checkbox" id="chk-dimensions" checked class="w-4 h-4 rounded accent-emerald-500 cursor-pointer">
+        </label>
+
+        <!-- Slider Altura de Muros -->
+        <div class="bg-slate-950/50 p-3 rounded-xl border border-slate-800/80">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-slate-300 font-medium">Altura de Muros</span>
+            <span id="wall-height-val" class="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">2.60 m</span>
+          </div>
+          <input type="range" id="slider-wall-height" min="2.40" max="3.20" step="0.05" value="2.60" class="w-full cursor-pointer">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+            <span>2.40 m</span>
+            <span>2.80 m</span>
+            <span>3.20 m</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Leyenda Rápida de Navegación -->
+      <div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 text-[11px] text-slate-400 space-y-1">
+        <div class="font-semibold text-slate-300">Navegación:</div>
+        <div>• <span class="text-slate-200">Clic Izq / 1 Dedo:</span> Rotar órbita</div>
+        <div>• <span class="text-slate-200">Clic Der / 2 Dedos:</span> Desplazar (Pan)</div>
+        <div>• <span class="text-slate-200">Rueda / Pellizco:</span> Zoom</div>
+        <div>• <span class="text-slate-200">Teclas WASD / Flechas:</span> Caminar</div>
+      </div>
+
+    </div>
+  </aside>
+
+  <script>
+    // ============================================================================
+    // 1. CONFIGURACIÓN MÉTRICA EXACTA DEL PLANO "LUMINARIAS DE SALA.pdf"
+    // ============================================================================
+    const PLAN = {
+      width: 5.47,        // Eje X interior: 0.80 + 1.24 + 1.24 + 1.30 + 0.89 = 5.47 m
+      length: 6.08,       // Eje Z interior: 1.08 + 1.40 + 1.20 + 1.20 + 1.20 = 6.08 m
+      wallThick: 0.15,    // Grosor de muros: 0.15 m
+      wallHeight: 2.60,   // Altura inicial de muros: 2.60 m
+      // Coordenadas exactas de las 16 luminarias empotradas (4x4)
+      dicroicosX: [0.80, 2.04, 3.28, 4.58],
+      dicroicosZ: [1.08, 2.48, 3.68, 4.88],
+      // Coordenadas exactas de las 2 lámparas colgantes (círculos amarillos)
+      pendantSala: { x: 2.04, z: 2.48, dropFromCeiling: 0.45 },     // ~2.15 m del piso con techo a 2.60 m
+      pendantComedor: { x: 2.22, z: 4.88, dropFromCeiling: 0.65 }   // ~1.95 m del piso con techo a 2.60 m
+    };
+
+    // Estado global de la aplicación
+    const state = {
+      isNight: true,
+      dicroicosOn: true,
+      colganteSalaOn: true,
+      colganteComedorOn: true,
+      ambientOn: true,
+      colorTemp: 3000,
+      ceilingMode: 'semi', // 'semi' | 'solid' | 'hidden'
+      showDimensions: true,
+      wallHeight: 2.60
+    };
+
+    // Temperaturas de color en Hexadecimal
+    const KELVIN_COLORS = {
+      3000: { light: 0xffd28e, emissive: 0xffb74d, hexStr: '#ffb74d' }, // Cálida 3000K
+      4000: { light: 0xfff1dc, emissive: 0xffe0b2, hexStr: '#ffe0b2' }, // Neutra 4000K
+      6000: { light: 0xe3f2fd, emissive: 0xbbdefb, hexStr: '#bbdefb' }  // Fría 6000K
+    };
+
+    // ============================================================================
+    // 2. INICIALIZACIÓN DE ESCENA, CÁMARA, RENDERER Y CONTROLES
+    // ============================================================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1120);
+    scene.fog = new THREE.FogExp2(0x0b1120, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(-2.6, 4.8, 9.2);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI * 0.495; // Evita pasar por debajo del piso
+    controls.minDistance = 0.8;
+    controls.maxDistance = 24;
+    controls.target.set(PLAN.width / 2, 1.1, PLAN.length / 2);
+    controls.update();
+
+    // ============================================================================
+    // 3. TEXTURAS PROCEDURALES (PISO PORCELANATO/MADERA, ALFOMBRA, MÁRMOL)
+    // ============================================================================
+    function createWoodFloorTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#c8a986';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Listones de madera cálida moderna
+      const planks = 8;
+      const plankW = 512 / planks;
+      for (let i = 0; i < planks; i++) {
+        const shade = (i % 2 === 0 ? 6 : -6) + (Math.sin(i * 3.1) * 5);
+        ctx.fillStyle = `rgb(${202 + shade}, ${168 + shade}, ${130 + shade})`;
+        ctx.fillRect(i * plankW, 0, plankW - 2, 512);
+        // Vetas sutiles
+        ctx.strokeStyle = 'rgba(120, 85, 50, 0.12)';
+        ctx.lineWidth = 1.5;
+        for (let v = 0; v < 6; v++) {
+          ctx.beginPath();
+          ctx.moveTo(i * plankW + (v * 10), 0);
+          ctx.bezierCurveTo(i * plankW + (v * 10) + 4, 170, i * plankW + (v * 10) - 4, 340, i * plankW + (v * 10), 512);
+          ctx.stroke();
+        }
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(4, 4.5);
+      return tex;
+    }
+
+    function createTileTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, 253, 253);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(6, 6);
+      return tex;
+    }
+
+    // ============================================================================
+    // 4. MATERIALES ARQUITECTÓNICOS
+    // ============================================================================
+    const materials = {
+      floorMain: new THREE.MeshStandardMaterial({ map: createWoodFloorTexture(), roughness: 0.45, metalness: 0.05 }),
+      floorService: new THREE.MeshStandardMaterial({ map: createTileTexture(), roughness: 0.5, metalness: 0.05 }),
+      wallMain: new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.85, metalness: 0.02 }),
+      wallAccent: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.8 }),
+      wallContext: new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.7, transparent: true, opacity: 0.42 }),
+      ceiling: new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.9,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      }),
+      glass: new THREE.MeshPhysicalMaterial({
+        color: 0xbae6fd,
+        transparent: true,
+        opacity: 0.28,
+        roughness: 0.08,
+        metalness: 0.1,
+        transmission: 0.4
+      }),
+      aluminum: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.8 }),
+      woodDark: new THREE.MeshStandardMaterial({ color: 0x4a3525, roughness: 0.55 }),
+      woodOak: new THREE.MeshStandardMaterial({ color: 0xb68d65, roughness: 0.5 }),
+      fabricSofa: new THREE.MeshStandardMaterial({ color: 0xd6d3d1, roughness: 0.9 }),
+      fabricChair: new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.85 }),
+      rug: new THREE.MeshStandardMaterial({ color: 0xe7e5e4, roughness: 0.95 }),
+      marbleWhite: new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.25, metalness: 0.05 }),
+      washerBlue: new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.35, metalness: 0.2 }),
+      chrome: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.9 })
+    };
+
+    // ============================================================================
+    // 5. GRUPOS DE LA ESCENA PARA ACTUALIZACIÓN DINÁMICA
+    // ============================================================================
+    const architectureGroup = new THREE.Group();
+    const dynamicHeightMeshes = []; // Muros que escalan con sliderWallHeight
+    const ceilingGroup = new THREE.Group();
+    const luminairesGroup = new THREE.Group();
+    const furnitureGroup = new THREE.Group();
+    const contextGroup = new THREE.Group();
+    const dimensionsGroup = new THREE.Group();
+
+    scene.add(architectureGroup);
+    scene.add(ceilingGroup);
+    scene.add(luminairesGroup);
+    scene.add(furnitureGroup);
+    scene.add(contextGroup);
+    scene.add(dimensionsGroup);
+
+    // Registro de objetos interactivos para Raycaster (Tooltip)
+    const interactiveLuminaires = [];
+    const dicroicoLights = [];
+    const dicroicoBulbs = [];
+    const dicroicoCones = [];
+
+    let pendantSalaObj = null;
+    let pendantComedorObj = null;
+
+    // ============================================================================
+    // 6. CONSTRUCCIÓN DE ARQUITECTURA BASE (PISOS, MUROS, VENTANAL, PUERTAS)
+    // ============================================================================
+    function buildArchitecture() {
+      const W = PLAN.width;   // 5.47 m
+      const L = PLAN.length;  // 6.08 m
+      const T = PLAN.wallThick; // 0.15 m
+
+      // Piso principal Sala-Comedor (0..5.47 en X, 0..6.08 en Z)
+      const mainFloor = new THREE.Mesh(new THREE.BoxGeometry(W, 0.12, L), materials.floorMain);
+      mainFloor.position.set(W / 2, -0.06, L / 2);
+      mainFloor.receiveShadow = true;
+      architectureGroup.add(mainFloor);
+
+      // Piso zona lavandería (cerámico claro 0..1.35 en X, 0..1.15 en Z)
+      const laundryFloor = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.122, 1.15), materials.floorService);
+      laundryFloor.position.set(1.35 / 2, -0.059, 1.15 / 2);
+      laundryFloor.receiveShadow = true;
+      architectureGroup.add(laundryFloor);
+
+      // Función auxiliar para crear muros que responden al slider de altura
+      function addWall(x, z, w, d, mat = materials.wallMain, isContext = false) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 1, d), mat);
+        mesh.position.set(x, PLAN.wallHeight / 2, z);
+        mesh.scale.y = PLAN.wallHeight;
+        mesh.castShadow = !isContext;
+        mesh.receiveShadow = true;
+        architectureGroup.add(mesh);
+        dynamicHeightMeshes.push({ mesh, baseYFactor: 0.5, heightFactor: 1.0 });
+        return mesh;
+      }
+
+      // 1. Muro Izquierdo completo (X = -T/2, Z = -T .. L + T)
+      addWall(-T / 2, L / 2, T, L + 2 * T);
+
+      // 2. Muro Superior (Z = -T/2): dividido con ventana alta en lavandería/sala
+      // Tramo izquierdo (0 a 1.35 m)
+      addWall(1.35 / 2, -T / 2, 1.35, T);
+      // Antepecho ventana superior izquierda (1.35 a 2.50 m)
+      const sillTop1 = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.10, T), materials.wallMain);
+      sillTop1.position.set(1.35 + 1.15 / 2, 0.55, -T / 2);
+      sillTop1.castShadow = true;
+      sillTop1.receiveShadow = true;
+      architectureGroup.add(sillTop1);
+
+      const glassTop1 = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.25, 0.04), materials.glass);
+      glassTop1.position.set(1.35 + 1.15 / 2, 1.72, -T / 2);
+      architectureGroup.add(glassTop1);
+
+      // Pilar central superior (2.50 a 3.30 m)
+      addWall(2.50 + 0.80 / 2, -T / 2, 0.80, T);
+
+      // Segunda ventana superior (3.30 a 4.55 m)
+      const sillTop2 = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.10, T), materials.wallMain);
+      sillTop2.position.set(3.30 + 1.25 / 2, 0.55, -T / 2);
+      architectureGroup.add(sillTop2);
+
+      const glassTop2 = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.25, 0.04), materials.glass);
+      glassTop2.position.set(3.30 + 1.25 / 2, 1.72, -T / 2);
+      architectureGroup.add(glassTop2);
+
+      // Tramo superior derecho (4.55 a 5.47 m)
+      addWall(4.55 + 0.92 / 2, -T / 2, 0.92, T);
+
+      // 3. Muro Derecho divisor con Cocina (X = W + T/2 = 5.545 m)
+      // En el plano se observa paso abierto hacia cocina arriba/medio y tramo sólido abajo
+      addWall(W + T / 2, 0.55, T, 1.10); // Mocheta superior derecha
+      addWall(W + T / 2, 4.95, T, 2.26); // Muro derecho inferior (Z = 3.82 a 6.08 m)
+
+      // 4. Muro Inferior (Z = L + T/2 = 6.155 m)
+      // Tramo izquierdo (0 a 0.65 m)
+      addWall(0.65 / 2, L + T / 2, 0.65, T);
+
+      // Amplio Ventanal / Mampara de vidrio en muro inferior (X = 0.65 a 3.65 m, ancho 3.00 m)
+      const winWidth = 3.00;
+      const winCenterX = 0.65 + winWidth / 2;
+      // Marco inferior y superior de mampara
+      const frameBottom = new THREE.Mesh(new THREE.BoxGeometry(winWidth, 0.06, T), materials.aluminum);
+      frameBottom.position.set(winCenterX, 0.03, L + T / 2);
+      architectureGroup.add(frameBottom);
+
+      // Hojas corredizas de vidrio (altura 2.25 m)
+      const glassPane1 = new THREE.Mesh(new THREE.BoxGeometry(winWidth / 2, 2.20, 0.03), materials.glass);
+      glassPane1.position.set(winCenterX - winWidth / 4, 1.13, L + T / 2 - 0.02);
+      architectureGroup.add(glassPane1);
+
+      const glassPane2 = new THREE.Mesh(new THREE.BoxGeometry(winWidth / 2, 2.20, 0.03), materials.glass);
+      glassPane2.position.set(winCenterX + winWidth / 4, 1.13, L + T / 2 + 0.02);
+      architectureGroup.add(glassPane2);
+
+      // Parantes verticales de aluminio de la mampara
+      [-winWidth / 2, 0, winWidth / 2].forEach(dx => {
+        const mullion = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.25, T), materials.aluminum);
+        mullion.position.set(winCenterX + dx, 1.125, L + T / 2);
+        architectureGroup.add(mullion);
+      });
+
+      // Dintel sobre mampara (desde Y = 2.25 hasta wallHeight)
+      const lintelWin = new THREE.Mesh(new THREE.BoxGeometry(winWidth, 1, T), materials.wallMain);
+      lintelWin.position.set(winCenterX, 2.25 + (PLAN.wallHeight - 2.25) / 2, L + T / 2);
+      lintelWin.scale.y = Math.max(0.05, PLAN.wallHeight - 2.25);
+      architectureGroup.add(lintelWin);
+      dynamicHeightMeshes.push({ mesh: lintelWin, fixedBottom: 2.25 });
+
+      // Pilar entre mampara y puerta P-2 (X = 3.65 a 4.58 m -> ancho 0.93 m)
+      addWall(3.65 + 0.93 / 2, L + T / 2, 0.93, T);
+
+      // 5. Puerta de Ingreso P-2 abajo a la derecha (X = 4.58 a 5.47 m -> ancho 0.89 m, Z = 6.08 m)
+      const doorWidth = 0.89;
+      const doorHeight = 2.15;
+      // Dintel sobre puerta P-2
+      const lintelDoor = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, 1, T), materials.wallMain);
+      lintelDoor.position.set(4.58 + doorWidth / 2, doorHeight + (PLAN.wallHeight - doorHeight) / 2, L + T / 2);
+      lintelDoor.scale.y = Math.max(0.05, PLAN.wallHeight - doorHeight);
+      architectureGroup.add(lintelDoor);
+      dynamicHeightMeshes.push({ mesh: lintelDoor, fixedBottom: doorHeight });
+
+      // Hoja de puerta P-2 abierta hacia adentro (bisagra en X = 5.47, Z = 6.08)
+      const doorLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.045, doorHeight, doorWidth - 0.03), materials.woodOak);
+      doorLeaf.position.set(5.45, doorHeight / 2, 6.08 - (doorWidth - 0.03) / 2);
+      doorLeaf.castShadow = true;
+      architectureGroup.add(doorLeaf);
+
+      // Arco de barrido de apertura de puerta P-2 en el piso
+      const arcCurve = new THREE.EllipseCurve(5.47, 6.08, doorWidth, doorWidth, Math.PI, Math.PI * 1.5, false, 0);
+      const arcPoints = arcCurve.getPoints(28).map(p => new THREE.Vector3(p.x, 0.008, p.y));
+      const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+      const arcLine = new THREE.Line(arcGeo, new THREE.LineBasicMaterial({ color: 0x64748b }));
+      architectureGroup.add(arcLine);
+
+      // 6. Tabique divisor de Zona Lavandería (esquina superior izquierda: X = 0 a 1.35 m, Z = 0 a 1.15 m)
+      // Muro inferior de lavandería (Z = 1.15, X = 0 a 0.55 m)
+      addWall(0.55 / 2, 1.15, 0.55, 0.10);
+      // Muro derecho de lavandería (X = 1.35, Z = 0.85 a 1.15 m)
+      addWall(1.35, 1.00, 0.10, 0.30);
+      // Puerta abatible de lavandería (bisagra en X = 1.35, Z = 0.05, ancho 0.80 m)
+      const laundryDoor = new THREE.Mesh(new THREE.BoxGeometry(0.78, 2.10, 0.035), materials.wallMain);
+      laundryDoor.position.set(1.35 + 0.38, 1.05, 0.25);
+      laundryDoor.rotation.y = -Math.PI / 6;
+      architectureGroup.add(laundryDoor);
+
+      // Falso Cielo Raso (Techo)
+      const ceilingMesh = new THREE.Mesh(new THREE.BoxGeometry(W + 2 * T, 0.08, L + 2 * T), materials.ceiling);
+      ceilingMesh.position.set(W / 2, PLAN.wallHeight + 0.04, L / 2);
+      ceilingGroup.add(ceilingMesh);
+    }
+
+    // ============================================================================
+    // 7. CONSTRUCCIÓN DE LUMINARIAS (16 DICROICOS + 2 LÁMPARAS COLGANTES)
+    // ============================================================================
+    function buildLuminaires() {
+      const kColor = KELVIN_COLORS[state.colorTemp];
+
+      // A. 16 Dicroicos / Ojos de Buey empotrados (Cuadrícula 4 x 4)
+      let index = 1;
+      PLAN.dicroicosZ.forEach((zPos, rowIdx) => {
+        PLAN.dicroicosX.forEach((xPos, colIdx) => {
+          const fixtureGroup = new THREE.Group();
+          fixtureGroup.position.set(xPos, PLAN.wallHeight, zPos);
+
+          // Bisel exterior blanco/negro arquitectónico
+          const bezel = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.085, 0.095, 0.025, 24),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.6 })
+          );
+          bezel.position.y = -0.008;
+          fixtureGroup.add(bezel);
+
+          // Bulbo LED emisivo
+          const bulbMat = new THREE.MeshStandardMaterial({
+            color: kColor.emissive,
+            emissive: kColor.emissive,
+            emissiveIntensity: 2.2,
+            roughness: 0.2
+          });
+          const bulb = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.015, 24), bulbMat);
+          bulb.position.y = -0.016;
+          fixtureGroup.add(bulb);
+          dicroicoBulbs.push(bulb);
+
+          // Cono de luz volumétrico sutil
+          const coneMat = new THREE.MeshBasicMaterial({
+            color: kColor.light,
+            transparent: true,
+            opacity: 0.045,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+          });
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(0.95, 2.3, 24, 1, true), coneMat);
+          cone.position.y = -1.16;
+          fixtureGroup.add(cone);
+          dicroicoCones.push(cone);
+
+          // Hitbox invisible para hover suave del mouse
+          const hitMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 12, 12),
+            new THREE.MeshBasicMaterial({ visible: false })
+          );
+          hitMesh.position.y = -0.05;
+          hitMesh.userData = {
+            title: `Dicroico LED #${index} (F${rowIdx + 1}-C${colIdx + 1})`,
+            type: 'Ojo de buey empotrado en cielo raso',
+            x: xPos.toFixed(2),
+            z: zPos.toFixed(2),
+            isPendant: false
+          };
+          fixtureGroup.add(hitMesh);
+          interactiveLuminaires.push(hitMesh);
+
+          // Luz real (PointLight optimizada para iluminación uniforme de los 16 puntos)
+          const pLight = new THREE.PointLight(kColor.light, 0.55, 5.2, 1.7);
+          pLight.position.set(xPos, PLAN.wallHeight - 0.12, zPos);
+          luminairesGroup.add(pLight);
+          dicroicoLights.push(pLight);
+
+          luminairesGroup.add(fixtureGroup);
+          index++;
+        });
+      });
+
+      // B. Función constructora de Lámpara Colgante Decorativa
+      function createPendantLamp({ x, z, dropFromCeiling, title, type, radius, style }) {
+        const root = new THREE.Group();
+        root.position.set(x, PLAN.wallHeight, z);
+
+        // Florón en techo
+        const canopy = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.07, 0.03, 20),
+          materials.aluminum
+        );
+        canopy.position.y = -0.015;
+        root.add(canopy);
+
+        // Cable tensor suspendido
+        const cable = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.008, 0.008, dropFromCeiling, 8),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a })
+        );
+        cable.position.y = -dropFromCeiling / 2;
+        root.add(cable);
+
+        // Pantalla / Luminaria colgante
+        const shadeGroup = new THREE.Group();
+        shadeGroup.position.y = -dropFromCeiling;
+
+        if (style === 'sala') {
+          // Colgante moderna de doble anillo / domo dorado-negro sobre mesa de centro
+          const outerRing = new THREE.Mesh(
+            new THREE.TorusGeometry(radius, 0.022, 16, 40),
+            new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.85 })
+          );
+          outerRing.rotation.x = Math.PI / 2;
+          shadeGroup.add(outerRing);
+
+          const innerDisc = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius * 0.65, radius * 0.65, 0.035, 32),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 })
+          );
+          shadeGroup.add(innerDisc);
+        } else {
+          // Colgante lineal/circular amplia de comedor sobre mesa de 6 sillas
+          const dome = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius * 0.55, radius, 0.14, 32, 1, true),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide })
+          );
+          shadeGroup.add(dome);
+
+          const goldRim = new THREE.Mesh(
+            new THREE.TorusGeometry(radius, 0.012, 12, 36),
+            new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.25, metalness: 0.9 })
+          );
+          goldRim.rotation.x = Math.PI / 2;
+          goldRim.position.y = -0.07;
+          shadeGroup.add(goldRim);
+        }
+
+        // Difusor LED emisivo cálido
+        const diffuserMat = new THREE.MeshStandardMaterial({
+          color: kColor.emissive,
+          emissive: kColor.emissive,
+          emissiveIntensity: 2.6,
+          roughness: 0.2
+        });
+        const diffuser = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.88, radius * 0.88, 0.02, 32),
+          diffuserMat
+        );
+        diffuser.position.y = -0.03;
+        shadeGroup.add(diffuser);
+
+        // Hitbox para tooltip
+        const hitBox = new THREE.Mesh(
+          new THREE.SphereGeometry(radius + 0.12, 16, 16),
+          new THREE.MeshBasicMaterial({ visible: false })
+        );
+        hitBox.userData = {
+          title,
+          type,
+          x: x.toFixed(2),
+          z: z.toFixed(2),
+          isPendant: true
+        };
+        shadeGroup.add(hitBox);
+        interactiveLuminaires.push(hitBox);
+
+        // Luz focal principal de la colgante (con proyección de sombras suaves)
+        const mainLight = new THREE.PointLight(kColor.light, 1.45, 7.5, 1.5);
+        mainLight.position.y = -0.15;
+        mainLight.castShadow = true;
+        mainLight.shadow.mapSize.width = 512;
+        mainLight.shadow.mapSize.height = 512;
+        mainLight.shadow.bias = -0.002;
+        shadeGroup.add(mainLight);
+
+        root.add(shadeGroup);
+        luminairesGroup.add(root);
+
+        return { root, cable, shadeGroup, diffuser, mainLight, dropFromCeiling };
+      }
+
+      pendantSalaObj = createPendantLamp({
+        x: PLAN.pendantSala.x,
+        z: PLAN.pendantSala.z,
+        dropFromCeiling: PLAN.pendantSala.dropFromCeiling,
+        title: 'Lámpara Colgante Sala',
+        type: 'Luminaria suspendida sobre mesa de centro',
+        radius: 0.30,
+        style: 'sala'
+      });
+
+      pendantComedorObj = createPendantLamp({
+        x: PLAN.pendantComedor.x,
+        z: PLAN.pendantComedor.z,
+        dropFromCeiling: PLAN.pendantComedor.dropFromCeiling,
+        title: 'Lámpara Colgante Comedor',
+        type: 'Luminaria suspendida sobre mesa de comedor',
+        radius: 0.36,
+        style: 'comedor'
+      });
+    }
+
+    // ============================================================================
+    // 8. MOBILIARIO DETALLADO SEGÚN EL PLANO
+    // ============================================================================
+    function buildFurniture() {
+      // --- A. ZONA LAVANDERÍA (X: 0..1.35 m, Z: 0..1.15 m) ---
+      // Lavadora/Secadora azul/blanca (1.08 m según cota izquierda)
+      const washerGroup = new THREE.Group();
+      washerGroup.position.set(0.36, 0, 0.34);
+      const washerBody = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.88, 0.62), materials.washerBlue);
+      washerBody.position.y = 0.44;
+      washerBody.castShadow = true;
+      washerBody.receiveShadow = true;
+      washerGroup.add(washerBody);
+
+      const washerTop = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.04, 0.63), materials.marbleWhite);
+      washerTop.position.y = 0.89;
+      washerGroup.add(washerTop);
+
+      const drumDoor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 0.04, 24),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 })
+      );
+      drumDoor.rotation.z = Math.PI / 2;
+      drumDoor.position.set(0.32, 0.48, 0);
+      washerGroup.add(drumDoor);
+      furnitureGroup.add(washerGroup);
+
+      // Lavadero / Poza con grifería (Z ~ 0.88 m)
+      const sinkGroup = new THREE.Group();
+      sinkGroup.position.set(0.28, 0, 0.88);
+      const sinkBase = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.85, 0.42), materials.marbleWhite);
+      sinkBase.position.y = 0.425;
+      sinkBase.castShadow = true;
+      sinkGroup.add(sinkBase);
+
+      const basin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.04, 0.30),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.3, metalness: 0.7 })
+      );
+      basin.position.y = 0.855;
+      sinkGroup.add(basin);
+
+      const faucet = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.22, 12), materials.chrome);
+      faucet.position.set(-0.16, 0.96, 0);
+      sinkGroup.add(faucet);
+      furnitureGroup.add(sinkGroup);
+
+      // --- B. ZONA SALA ---
+      // Alfombra decorativa bajo zona de estar
+      const livingRug = new THREE.Mesh(new THREE.BoxGeometry(3.10, 0.012, 3.20), materials.rug);
+      livingRug.position.set(2.35, 0.006, 2.15);
+      livingRug.receiveShadow = true;
+      furnitureGroup.add(livingRug);
+
+      // Mueble de TV / Consola moderna en muro izquierdo (Z = 1.40 a 2.95 m)
+      const tvConsole = new THREE.Group();
+      tvConsole.position.set(0.22, 0, 2.18);
+      const consoleBody = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.48, 1.55), materials.woodDark);
+      consoleBody.position.y = 0.24;
+      consoleBody.castShadow = true;
+      consoleBody.receiveShadow = true;
+      tvConsole.add(consoleBody);
+
+      // Televisor pantalla plana montado/apoyado
+      const tvScreen = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.78, 1.38),
+        new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.15, metalness: 0.85 })
+      );
+      tvScreen.position.set(-0.04, 0.96, 0);
+      tvScreen.castShadow = true;
+      tvConsole.add(tvScreen);
+      furnitureGroup.add(tvConsole);
+
+      // Función auxiliar para construir un Sofá moderno de 3 cuerpos
+      function createSofa(width, depth) {
+        const sofa = new THREE.Group();
+        // Base
+        const base = new THREE.Mesh(new THREE.BoxGeometry(width, 0.24, depth), materials.woodDark);
+        base.position.y = 0.14;
+        base.castShadow = true;
+        sofa.add(base);
+
+        // Cojines de asiento (3 cuerpos)
+        const seatW = (width - 0.28) / 3;
+        for (let i = -1; i <= 1; i++) {
+          const cushion = new THREE.Mesh(new THREE.BoxGeometry(seatW - 0.02, 0.16, depth - 0.18), materials.fabricSofa);
+          cushion.position.set(i * seatW, 0.34, 0.06);
+          cushion.castShadow = true;
+          cushion.receiveShadow = true;
+          sofa.add(cushion);
+
+          // Respaldo
+          const backCushion = new THREE.Mesh(new THREE.BoxGeometry(seatW - 0.02, 0.38, 0.18), materials.fabricSofa);
+          backCushion.position.set(i * seatW, 0.56, -depth / 2 + 0.12);
+          backCushion.castShadow = true;
+          sofa.add(backCushion);
+        }
+
+        // Brazos laterales
+        [-1, 1].forEach(side => {
+          const arm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.52, depth), materials.fabricSofa);
+          arm.position.set(side * (width / 2 - 0.07), 0.30, 0);
+          arm.castShadow = true;
+          sofa.add(arm);
+        });
+        return sofa;
+      }
+
+      // Sofá superior mirando hacia la sala (X = 2.04 m, Z = 0.62 m)
+      const topSofa = createSofa(1.95, 0.85);
+      topSofa.position.set(2.04, 0, 0.62);
+      furnitureGroup.add(topSofa);
+
+      // Sofá derecho mirando hacia el mueble de TV (X = 3.55 m, Z = 2.25 m)
+      const rightSofa = createSofa(2.05, 0.85);
+      rightSofa.position.set(3.55, 0, 2.25);
+      rightSofa.rotation.y = -Math.PI / 2;
+      furnitureGroup.add(rightSofa);
+
+      // Mesa de centro doble circular bajo colgante en (X = 2.04 m, Z = 2.48 m)
+      const coffeeTableGroup = new THREE.Group();
+      coffeeTableGroup.position.set(PLAN.pendantSala.x, 0, PLAN.pendantSala.z);
+
+      // Mesa circular principal
+      const table1Top = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.035, 32), materials.marbleWhite);
+      table1Top.position.set(-0.06, 0.38, 0.05);
+      table1Top.castShadow = true;
+      table1Top.receiveShadow = true;
+      coffeeTableGroup.add(table1Top);
+
+      const table1Base = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.36, 24), materials.aluminum);
+      table1Base.position.set(-0.06, 0.18, 0.05);
+      coffeeTableGroup.add(table1Base);
+
+      // Segunda mesa circular nido más alta y desplazada
+      const table2Top = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.03, 32), materials.woodOak);
+      table2Top.position.set(0.24, 0.44, -0.22);
+      table2Top.castShadow = true;
+      coffeeTableGroup.add(table2Top);
+
+      const table2Base = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.42, 20), materials.aluminum);
+      table2Base.position.set(0.24, 0.21, -0.22);
+      coffeeTableGroup.add(table2Base);
+
+      furnitureGroup.add(coffeeTableGroup);
+
+      // Dos pufs circulares en Z ~ 3.45 m
+      [1.72, 2.38].forEach(px => {
+        const pouf = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.40, 24), materials.fabricChair);
+        pouf.position.set(px, 0.20, 3.45);
+        pouf.castShadow = true;
+        pouf.receiveShadow = true;
+        furnitureGroup.add(pouf);
+      });
+
+      // --- C. ZONA COMEDOR ---
+      // Aparador / Credenza contra muro izquierdo (Z = 4.15 a 5.55 m)
+      const credenza = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.78, 1.40), materials.woodOak);
+      credenza.position.set(0.21, 0.39, 4.85);
+      credenza.castShadow = true;
+      credenza.receiveShadow = true;
+      furnitureGroup.add(credenza);
+
+      // Mesa de Comedor rectangular centrada exactamente en (X = 2.22 m, Z = 4.88 m)
+      const diningGroup = new THREE.Group();
+      diningGroup.position.set(PLAN.pendantComedor.x, 0, PLAN.pendantComedor.z);
+
+      const tableW = 1.75;
+      const tableD = 0.98;
+      const tableH = 0.76;
+
+      const diningTop = new THREE.Mesh(new THREE.BoxGeometry(tableW, 0.045, tableD), materials.woodOak);
+      diningTop.position.y = tableH;
+      diningTop.castShadow = true;
+      diningTop.receiveShadow = true;
+      diningGroup.add(diningTop);
+
+      // Patas de mesa de comedor
+      [[-tableW / 2 + 0.12, -tableD / 2 + 0.10], [tableW / 2 - 0.12, -tableD / 2 + 0.10],
+       [-tableW / 2 + 0.12, tableD / 2 - 0.10], [tableW / 2 - 0.12, tableD / 2 - 0.10]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, tableH - 0.02, 0.06), materials.aluminum);
+        leg.position.set(lx, (tableH - 0.02) / 2, lz);
+        leg.castShadow = true;
+        diningGroup.add(leg);
+      });
+
+      // Constructor de silla de comedor
+      function createChair() {
+        const chair = new THREE.Group();
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.05, 0.44), materials.fabricChair);
+        seat.position.y = 0.45;
+        seat.castShadow = true;
+        chair.add(seat);
+
+        const back = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.42, 0.05), materials.fabricChair);
+        back.position.set(0, 0.68, -0.195);
+        back.castShadow = true;
+        chair.add(back);
+
+        [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]].forEach(([cx, cz]) => {
+          const cLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.012, 0.45, 8), materials.woodDark);
+          cLeg.position.set(cx, 0.225, cz);
+          chair.add(cLeg);
+        });
+        return chair;
+      }
+
+      // 6 Sillas: 2 arriba, 2 abajo, 1 izquierda, 1 derecha
+      const chairConfigs = [
+        { x: -0.45, z: -0.62, rotY: 0 },
+        { x:  0.45, z: -0.62, rotY: 0 },
+        { x: -0.45, z:  0.62, rotY: Math.PI },
+        { x:  0.45, z:  0.62, rotY: Math.PI },
+        { x: -1.02, z:  0,    rotY: Math.PI / 2 },
+        { x:  1.02, z:  0,    rotY: -Math.PI / 2 }
+      ];
+      chairConfigs.forEach(cfg => {
+        const ch = createChair();
+        ch.position.set(cfg.x, 0, cfg.z);
+        ch.rotation.y = cfg.rotY;
+        diningGroup.add(ch);
+      });
+
+      furnitureGroup.add(diningGroup);
+    }
+
+    // ============================================================================
+    // 9. ESPACIOS ADYACENTES DE CONTEXTO (COCINA EN L Y ESCALERA DE DOS TRAMOS)
+    // ============================================================================
+    function buildContextSpaces() {
+      const W = PLAN.width;  // 5.47
+      const L = PLAN.length; // 6.08
+      const T = PLAN.wallThick; // 0.15
+
+      // --- A. COCINA EN L A LA DERECHA (X: 5.62 a 8.20 m, Z: 0 a 4.15 m) ---
+      const kitchenFloor = new THREE.Mesh(new THREE.BoxGeometry(2.65, 0.11, 4.25), materials.floorService);
+      kitchenFloor.position.set(W + T + 1.325, -0.055, 2.125);
+      kitchenFloor.receiveShadow = true;
+      contextGroup.add(kitchenFloor);
+
+      // Mesada en L (tramo superior + tramo izquierdo junto al muro divisor)
+      const counterTop1 = new THREE.Mesh(new THREE.BoxGeometry(2.50, 0.88, 0.65), materials.wallContext);
+      counterTop1.position.set(W + T + 1.25, 0.44, 0.325);
+      contextGroup.add(counterTop1);
+
+      const counterTop2 = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.88, 3.20), materials.wallContext);
+      counterTop2.position.set(W + T + 0.325, 0.44, 2.25);
+      contextGroup.add(counterTop2);
+
+      // Lavadero con escurridero en mesada superior de cocina
+      const kitchenSink = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.03, 0.45), materials.chrome);
+      kitchenSink.position.set(W + T + 1.75, 0.89, 0.325);
+      contextGroup.add(kitchenSink);
+
+      // Refrigeradora / Despensa lado derecho de cocina
+      const fridge = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.85, 0.75), materials.wallContext);
+      fridge.position.set(W + T + 2.15, 0.925, 1.65);
+      contextGroup.add(fridge);
+
+      // --- B. ESCALERA DE DOS TRAMOS ABAJO A LA DERECHA (Z > 6.23 m) ---
+      const stairOriginX = 4.58;
+      const stairOriginZ = L + T + 0.35; // Z = 6.58 m
+      const stepCount = 9;
+      const stepW = 0.28;
+      const stepH = 0.175;
+      const flightDepth = 1.05;
+
+      // Hall de ingreso frente a P-2
+      const hallFloor = new THREE.Mesh(new THREE.BoxGeometry(3.75, 0.11, 2.95), materials.floorService);
+      hallFloor.position.set(stairOriginX + 1.875, -0.055, L + T + 1.475);
+      contextGroup.add(hallFloor);
+
+      // Primer tramo (sube hacia +X)
+      for (let i = 0; i < stepCount; i++) {
+        const h = (i + 1) * stepH;
+        const step = new THREE.Mesh(new THREE.BoxGeometry(stepW, h, flightDepth), materials.wallContext);
+        step.position.set(stairOriginX + 0.65 + i * stepW, h / 2, stairOriginZ + flightDepth / 2);
+        contextGroup.add(step);
+      }
+
+      // Descanso intermedio a la derecha
+      const landingH = stepCount * stepH;
+      const landing = new THREE.Mesh(new THREE.BoxGeometry(0.95, landingH, flightDepth * 2 + 0.12), materials.wallContext);
+      landing.position.set(stairOriginX + 0.65 + stepCount * stepW + 0.35, landingH / 2, stairOriginZ + flightDepth + 0.06);
+      contextGroup.add(landing);
+
+      // Segundo tramo (regresa hacia -X)
+      for (let i = 0; i < stepCount; i++) {
+        const h = landingH + (i + 1) * stepH;
+        const step = new THREE.Mesh(new THREE.BoxGeometry(stepW, h, flightDepth), materials.wallContext);
+        step.position.set(
+          stairOriginX + 0.65 + (stepCount - 1 - i) * stepW,
+          h / 2,
+          stairOriginZ + flightDepth * 1.5 + 0.12
+        );
+        contextGroup.add(step);
+      }
+
+      // Pasamanos metálicos sutiles de escalera
+      const rail1 = new THREE.Mesh(new THREE.BoxGeometry(stepCount * stepW, 0.04, 0.04), materials.aluminum);
+      rail1.position.set(stairOriginX + 0.65 + (stepCount * stepW) / 2, landingH / 2 + 0.85, stairOriginZ + flightDepth);
+      rail1.rotation.z = Math.atan2(landingH, stepCount * stepW);
+      contextGroup.add(rail1);
+    }
+
+    // ============================================================================
+    // 10. CAPA TÉCNICA: LÍNEAS GUÍA VERDES Y COTAS FLOTANTES 3D
+    // ============================================================================
+    function createDimensionLabelSprite(text, bgColor = 'rgba(6, 78, 59, 0.92)', borderColor = '#34d399') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 96;
+      const ctx = canvas.getContext('2d');
+
+      // Fondo redondeado
+      ctx.fillStyle = bgColor;
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.roundRect(12, 14, 232, 68, 22);
+      ctx.fill();
+      ctx.stroke();
+
+      // Texto de cota
+      ctx.fillStyle = '#ecfdf5';
+      ctx.font = 'bold 36px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 49);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(0.68, 0.255, 1);
+      return sprite;
+    }
+
+    function buildDimensionsAndGuides() {
+      const greenLineMat = new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 2 });
+      const yFloor = 0.025;
+
+      // 4 Líneas guía verdes longitudinales del plano original (en X = 0.80, 2.04, 3.28, 4.58)
+      PLAN.dicroicosX.forEach(x => {
+        const pts = [new THREE.Vector3(x, yFloor, 0.05), new THREE.Vector3(x, yFloor, PLAN.length - 0.05)];
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        dimensionsGroup.add(new THREE.Line(geo, greenLineMat));
+      });
+
+      // Línea guía longitudinal adicional de la colgante comedor (X = 2.22 m)
+      const ptsComedor = [new THREE.Vector3(2.22, yFloor, 4.30), new THREE.Vector3(2.22, yFloor, PLAN.length - 0.05)];
+      dimensionsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ptsComedor), greenLineMat));
+
+      // Función auxiliar para dibujar cota horizontal (Eje X) o vertical (Eje Z) con ticks
+      function addDimensionSegment(x1, z1, x2, z2, labelText, yPos = 0.06) {
+        const pts = [new THREE.Vector3(x1, yPos, z1), new THREE.Vector3(x2, yPos, z2)];
+        dimensionsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), greenLineMat));
+
+        // Ticks en extremos
+        const isHoriz = Math.abs(z1 - z2) < 0.01;
+        const tickSize = 0.08;
+        [ [x1, z1], [x2, z2] ].forEach(([tx, tz]) => {
+          const tPts = isHoriz
+            ? [new THREE.Vector3(tx, yPos, tz - tickSize), new THREE.Vector3(tx, yPos, tz + tickSize)]
+            : [new THREE.Vector3(tx - tickSize, yPos, tz), new THREE.Vector3(tx + tickSize, yPos, tz)];
+          dimensionsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(tPts), greenLineMat));
+        });
+
+        const sprite = createDimensionLabelSprite(labelText);
+        sprite.position.set((x1 + x2) / 2, yPos + 0.16, (z1 + z2) / 2);
+        dimensionsGroup.add(sprite);
+      }
+
+      // Cotas Eje X exactas del plano:
+      addDimensionSegment(0.00, 1.55, 0.80, 1.55, '0.80 m');
+      addDimensionSegment(0.80, 3.30, 2.04, 3.30, '1.24 m');
+      addDimensionSegment(2.04, 3.30, 3.28, 3.30, '1.24 m');
+      addDimensionSegment(3.28, 3.30, 4.58, 3.30, '1.30 m');
+      addDimensionSegment(4.58, 5.45, 5.47, 5.45, '0.89 m');
+
+      // Cotas específicas de la colgante del comedor (1.42 m desde X=0.80 y 1.06 m hasta X=3.28)
+      addDimensionSegment(0.80, 4.52, 2.22, 4.52, '1.42 m');
+      addDimensionSegment(2.22, 4.52, 3.28, 4.52, '1.06 m');
+
+      // Cotas Eje Z exactas del plano (columna derecha X = 4.95 m):
+      addDimensionSegment(4.95, 0.00, 4.95, 1.08, '1.08 m');
+      addDimensionSegment(4.95, 1.08, 4.95, 2.48, '1.40 m');
+      addDimensionSegment(4.95, 2.48, 4.95, 3.68, '1.20 m');
+      addDimensionSegment(4.95, 3.68, 4.95, 4.88, '1.20 m');
+      addDimensionSegment(2.75, 4.88, 2.75, 6.08, '1.20 m');
+    }
+
+    // ============================================================================
+    // 11. ILUMINACIÓN AMBIENTAL Y SOLAR
+    // ============================================================================
+    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.35);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x334155, 0.45);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.85);
+    sunLight.position.set(4, 10, 12);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
+    scene.add(sunLight);
+
+    // Construir todos los elementos
+    buildArchitecture();
+    buildLuminaires();
+    buildFurniture();
+    buildContextSpaces();
+    buildDimensionsAndGuides();
+
+    // ============================================================================
+    // 12. ACTUALIZACIÓN DINÁMICA DE ESTADO (LUCES, TEMPERATURA, ALTURA, TECHO)
+    // ============================================================================
+    function applyLightingAndEnvironment() {
+      const kColor = KELVIN_COLORS[state.colorTemp];
+
+      // Fondo y ambiente Día vs Noche
+      if (state.isNight) {
+        scene.background.setHex(0x0b1120);
+        scene.fog.color.setHex(0x0b1120);
+        sunLight.intensity = 0.08;
+        hemiLight.intensity = state.ambientOn ? 0.25 : 0.04;
+        ambientLight.intensity = state.ambientOn ? 0.22 : 0.03;
+      } else {
+        scene.background.setHex(0xdbeafe);
+        scene.fog.color.setHex(0xdbeafe);
+        sunLight.intensity = 1.15;
+        hemiLight.intensity = state.ambientOn ? 0.75 : 0.25;
+        ambientLight.intensity = state.ambientOn ? 0.55 : 0.15;
+      }
+
+      // 16 Dicroicos
+      const dicIntensity = state.dicroicosOn ? (state.isNight ? 0.62 : 0.30) : 0;
+      dicroicoLights.forEach(l => {
+        l.color.setHex(kColor.light);
+        l.intensity = dicIntensity;
+      });
+      dicroicoBulbs.forEach(b => {
+        b.material.color.setHex(state.dicroicosOn ? kColor.emissive : 0x334155);
+        b.material.emissive.setHex(state.dicroicosOn ? kColor.emissive : 0x000000);
+        b.material.emissiveIntensity = state.dicroicosOn ? 2.4 : 0;
+      });
+      dicroicoCones.forEach(c => {
+        c.visible = state.dicroicosOn && state.isNight;
+        c.material.color.setHex(kColor.light);
+      });
+
+      // Colgante Sala
+      if (pendantSalaObj) {
+        pendantSalaObj.mainLight.color.setHex(kColor.light);
+        pendantSalaObj.mainLight.intensity = state.colganteSalaOn ? (state.isNight ? 1.55 : 0.65) : 0;
+        pendantSalaObj.diffuser.material.color.setHex(state.colganteSalaOn ? kColor.emissive : 0x334155);
+        pendantSalaObj.diffuser.material.emissive.setHex(state.colganteSalaOn ? kColor.emissive : 0x000000);
+      }
+
+      // Colgante Comedor
+      if (pendantComedorObj) {
+        pendantComedorObj.mainLight.color.setHex(kColor.light);
+        pendantComedorObj.mainLight.intensity = state.colganteComedorOn ? (state.isNight ? 1.65 : 0.70) : 0;
+        pendantComedorObj.diffuser.material.color.setHex(state.colganteComedorOn ? kColor.emissive : 0x334155);
+        pendantComedorObj.diffuser.material.emissive.setHex(state.colganteComedorOn ? kColor.emissive : 0x000000);
+      }
+
+      // Modo de techo
+      if (state.ceilingMode === 'hidden') {
+        ceilingGroup.visible = false;
+      } else {
+        ceilingGroup.visible = true;
+        materials.ceiling.opacity = state.ceilingMode === 'semi' ? 0.35 : 1.0;
+        materials.ceiling.transparent = state.ceilingMode === 'semi';
+        materials.ceiling.depthWrite = state.ceilingMode === 'solid';
+      }
+
+      // Cotas y líneas guía
+      dimensionsGroup.visible = state.showDimensions;
+    }
+
+    function updateWallHeight(newH) {
+      PLAN.wallHeight = newH;
+      state.wallHeight = newH;
+
+      // Actualizar muros y dinteles
+      dynamicHeightMeshes.forEach(item => {
+        if (item.fixedBottom !== undefined) {
+          const h = Math.max(0.05, newH - item.fixedBottom);
+          item.mesh.scale.y = h;
+          item.mesh.position.y = item.fixedBottom + h / 2;
+        } else {
+          item.mesh.scale.y = newH;
+          item.mesh.position.y = newH / 2;
+        }
+      });
+
+      // Actualizar posición del techo
+      if (ceilingGroup.children[0]) {
+        ceilingGroup.children[0].position.y = newH + 0.04;
+      }
+
+      // Actualizar altura de las 16 luminarias empotradas y las 2 colgantes
+      luminairesGroup.children.forEach(child => {
+        if (child.isGroup) {
+          child.position.y = newH;
+        } else if (child.isPointLight) {
+          child.position.y = newH - 0.12;
+        }
+      });
+    }
+
+    applyLightingAndEnvironment();
+
+    // ============================================================================
+    // 13. CÁMARAS PREESTABLECIDAS CON TRANSICIÓN SUAVE
+    // ============================================================================
+    let cameraAnim = null;
+
+    const CAMERA_PRESETS = {
+      general: { pos: new THREE.Vector3(-2.6, 4.8, 9.2), target: new THREE.Vector3(2.75, 1.0, 3.04) },
+      planta:  { pos: new THREE.Vector3(2.95, 9.6, 3.15), target: new THREE.Vector3(2.95, 0.0, 3.10) },
+      sala:    { pos: new THREE.Vector3(4.65, 1.75, 3.85), target: new THREE.Vector3(1.50, 1.05, 1.85) },
+      comedor: { pos: new THREE.Vector3(4.75, 1.85, 3.55), target: new THREE.Vector3(1.80, 0.95, 4.95) },
+      techo:   { pos: new THREE.Vector3(2.74, 0.95, 5.35), target: new THREE.Vector3(2.74, 2.55, 2.40) }
+    };
+
+    function moveCameraTo(presetKey) {
+      const p = CAMERA_PRESETS[presetKey];
+      if (!p) return;
+
+      // Si elige Vista Planta, sugerir techo semi-transparente si está sólido
+      if (presetKey === 'planta' && state.ceilingMode === 'solid') {
+        state.ceilingMode = 'semi';
+        document.querySelectorAll('.ceil-btn').forEach(b => {
+          b.classList.remove('active', 'bg-slate-700', 'text-white', 'font-semibold');
+          b.classList.add('text-slate-400');
+          if (b.dataset.ceiling === 'semi') {
+            b.classList.add('active', 'bg-slate-700', 'text-white', 'font-semibold');
+            b.classList.remove('text-slate-400');
+          }
+        });
+        applyLightingAndEnvironment();
+      }
+
+      cameraAnim = {
+        startPos: camera.position.clone(),
+        endPos: p.pos.clone(),
+        startTarget: controls.target.clone(),
+        endTarget: p.target.clone(),
+        progress: 0
+      };
+    }
+
+    // ============================================================================
+    // 14. INTERACTIVIDAD DE UI, TOOLTIP RAYCASTER Y NAVEGACIÓN WASD
+    // ============================================================================
+    // Botones de cámara
+    document.querySelectorAll('.cam-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.cam-btn').forEach(b => {
+          b.classList.remove('active', 'bg-amber-500', 'text-slate-950', 'shadow');
+          b.classList.add('text-slate-300');
+        });
+        btn.classList.add('active', 'bg-amber-500', 'text-slate-950', 'shadow');
+        btn.classList.remove('text-slate-300');
+        moveCameraTo(btn.dataset.cam);
+      });
+    });
+
+    // Colapsar/Expandir panel lateral
+    const sidebar = document.getElementById('control-sidebar');
+    const toggleSidebarBtn = document.getElementById('toggle-sidebar-btn');
+    let sidebarOpen = true;
+    toggleSidebarBtn.addEventListener('click', () => {
+      sidebarOpen = !sidebarOpen;
+      sidebar.style.transform = sidebarOpen ? 'translateX(0)' : 'translateX(calc(100% + 1.5rem))';
+    });
+
+    // Modo Noche / Día
+    const btnNight = document.getElementById('btn-mode-night');
+    const btnDay = document.getElementById('btn-mode-day');
+    btnNight.addEventListener('click', () => {
+      state.isNight = true;
+      btnNight.className = 'py-2 px-3 rounded-lg font-semibold bg-indigo-600 text-white shadow flex items-center justify-center gap-1.5 transition';
+      btnDay.className = 'py-2 px-3 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 transition';
+      applyLightingAndEnvironment();
+    });
+    btnDay.addEventListener('click', () => {
+      state.isNight = false;
+      btnDay.className = 'py-2 px-3 rounded-lg font-semibold bg-amber-500 text-slate-950 shadow flex items-center justify-center gap-1.5 transition';
+      btnNight.className = 'py-2 px-3 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 transition';
+      applyLightingAndEnvironment();
+    });
+
+    // Interruptores de circuitos
+    document.getElementById('chk-dicroicos').addEventListener('change', e => {
+      state.dicroicosOn = e.target.checked;
+      applyLightingAndEnvironment();
+    });
+    document.getElementById('chk-colgante-sala').addEventListener('change', e => {
+      state.colganteSalaOn = e.target.checked;
+      applyLightingAndEnvironment();
+    });
+    document.getElementById('chk-colgante-comedor').addEventListener('change', e => {
+      state.colganteComedorOn = e.target.checked;
+      applyLightingAndEnvironment();
+    });
+    document.getElementById('chk-ambient').addEventListener('change', e => {
+      state.ambientOn = e.target.checked;
+      applyLightingAndEnvironment();
+    });
+
+    // Temperatura de color
+    document.querySelectorAll('.temp-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.temp-btn').forEach(b => {
+          b.className = 'temp-btn py-2 px-2 rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-800 text-center transition';
+        });
+        btn.className = 'temp-btn active py-2 px-2 rounded-xl border border-amber-400/60 bg-amber-500/20 text-amber-200 font-semibold text-center transition';
+        state.colorTemp = parseInt(btn.dataset.temp, 10);
+        applyLightingAndEnvironment();
+      });
+    });
+
+    // Modo Techo
+    document.querySelectorAll('.ceil-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.ceil-btn').forEach(b => {
+          b.className = 'ceil-btn py-1.5 px-2 rounded-lg text-slate-400 hover:text-white transition';
+        });
+        btn.className = 'ceil-btn active py-1.5 px-2 rounded-lg bg-slate-700 text-white font-semibold transition';
+        state.ceilingMode = btn.dataset.ceiling;
+        applyLightingAndEnvironment();
+      });
+    });
+
+    // Líneas guía y cotas
+    document.getElementById('chk-dimensions').addEventListener('change', e => {
+      state.showDimensions = e.target.checked;
+      applyLightingAndEnvironment();
+    });
+
+    // Slider Altura de Muros
+    const sliderWall = document.getElementById('slider-wall-height');
+    const labelWall = document.getElementById('wall-height-val');
+    sliderWall.addEventListener('input', e => {
+      const h = parseFloat(e.target.value);
+      labelWall.textContent = `${h.toFixed(2)} m`;
+      updateWallHeight(h);
+    });
+
+    // Raycaster para Tooltip sobre luminarias
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const tooltip = document.getElementById('luminaire-tooltip');
+    const tooltipTitle = document.getElementById('tooltip-title');
+    const tooltipType = document.getElementById('tooltip-type');
+    const tooltipX = document.getElementById('tooltip-x');
+    const tooltipZ = document.getElementById('tooltip-z');
+
+    function handlePointerMove(clientX, clientY) {
+      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(interactiveLuminaires, false);
+
+      if (hits.length > 0) {
+        const data = hits[0].object.userData;
+        tooltipTitle.textContent = data.title;
+        tooltipType.textContent = data.type;
+        tooltipX.textContent = `${data.x} m`;
+        tooltipZ.textContent = `${data.z} m`;
+
+        tooltip.classList.remove('hidden');
+        const offsetX = Math.min(clientX + 16, window.innerWidth - 240);
+        const offsetY = Math.min(clientY + 16, window.innerHeight - 110);
+        tooltip.style.left = `${offsetX}px`;
+        tooltip.style.top = `${offsetY}px`;
+        document.body.style.cursor = 'pointer';
+      } else {
+        tooltip.classList.add('hidden');
+        document.body.style.cursor = 'default';
+      }
+    }
+
+    window.addEventListener('mousemove', e => handlePointerMove(e.clientX, e.clientY));
+    window.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    }, { passive: true });
+
+    // Navegación con teclado WASD / Flechas
+    const keysPressed = {};
+    window.addEventListener('keydown', e => { keysPressed[e.code] = true; });
+    window.addEventListener('keyup', e => { keysPressed[e.code] = false; });
+
+    function updateKeyboardNavigation(delta) {
+      const speed = 3.2 * delta;
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+
+      const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+      const move = new THREE.Vector3();
+
+      if (keysPressed['KeyW'] || keysPressed['ArrowUp']) move.add(forward);
+      if (keysPressed['KeyS'] || keysPressed['ArrowDown']) move.sub(forward);
+      if (keysPressed['KeyD'] || keysPressed['ArrowRight']) move.add(right);
+      if (keysPressed['KeyA'] || keysPressed['ArrowLeft']) move.sub(right);
+
+      if (move.lengthSq() > 0) {
+        move.normalize().multiplyScalar(speed);
+        camera.position.add(move);
+        controls.target.add(move);
+      }
+    }
+
+    // ============================================================================
+    // 15. REDIMENSIONAMIENTO Y BUCLE DE RENDERIZADO
+    // ============================================================================
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+
+      // Animación suave de cambio de cámara
+      if (cameraAnim) {
+        cameraAnim.progress += delta * 2.4;
+        const t = Math.min(cameraAnim.progress, 1);
+        const ease = 1 - Math.pow(1 - t, 3); // Cubic ease-out
+        camera.position.lerpVectors(cameraAnim.startPos, cameraAnim.endPos, ease);
+        controls.target.lerpVectors(cameraAnim.startTarget, cameraAnim.endTarget, ease);
+        if (t >= 1) cameraAnim = null;
+      }
+
+      updateKeyboardNavigation(delta);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      animate();
+    };
+  </script>
+</body>
+</html>
